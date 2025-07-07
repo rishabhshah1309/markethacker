@@ -1,0 +1,15 @@
+yfinance
+pandas
+numpy
+scikit-learn
+xgboost
+lightgbm
+prophet
+vaderSentiment
+flask
+streamlit
+praw
+tweepy
+beautifulsoup4
+plotly
+boto3
