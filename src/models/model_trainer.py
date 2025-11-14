@@ -55,8 +55,29 @@ class ModelTrainer:
 
         print(f"Initial data shape: {df.shape}")
 
-        # Remove NaN values
+        # Log NaN statistics before handling
+        nan_counts = df.isnull().sum()
+        nan_cols = nan_counts[nan_counts > 0]
+        if len(nan_cols) > 0:
+            print(f"Found NaN values in {len(nan_cols)} columns")
+            print(f"Total rows with at least one NaN: {df.isnull().any(axis=1).sum()}")
+
+        # Smart NaN handling strategy
+        # 1. Forward fill for rolling window features (they should use previous values)
+        # 2. Backward fill for any remaining NaNs in the beginning
+        # 3. Only then drop rows that still have NaNs
+
+        print("Applying intelligent NaN handling...")
+        df = df.ffill()  # Forward fill
+        df = df.bfill()  # Backward fill for any remaining NaNs at the start
+
+        # Drop any remaining NaN values (should be minimal now)
+        rows_before = len(df)
         df = df.dropna()
+        rows_after = len(df)
+
+        if rows_before > rows_after:
+            print(f"Dropped {rows_before - rows_after} rows with remaining NaN values")
 
         # Validate after removing NaN values
         if df.empty:
@@ -66,7 +87,7 @@ class ModelTrainer:
                 "Check your data source or feature engineering pipeline."
             )
 
-        print(f"Data shape after dropna: {df.shape}")
+        print(f"Data shape after NaN handling: {df.shape}")
 
         # Auto-detect feature columns if not provided
         if feature_columns is None:
@@ -79,7 +100,14 @@ class ModelTrainer:
             if 'Close' not in df.columns:
                 raise ValueError("Cannot create target column: 'Close' column not found in DataFrame")
             df[target_column] = df['Close'].pct_change(5).shift(-5) * 100
-            df = df.dropna()
+
+            # Only drop rows where the target is NaN (typically the last 5 rows)
+            rows_before_target = len(df)
+            df = df.dropna(subset=[target_column])
+            rows_after_target = len(df)
+
+            if rows_before_target > rows_after_target:
+                print(f"Dropped {rows_before_target - rows_after_target} rows without valid target values")
 
             # Validate again after creating target
             if df.empty:
@@ -87,6 +115,12 @@ class ModelTrainer:
                     f"DataFrame is empty after creating target column '{target_column}'. "
                     "This can happen if the dataset is too small (needs at least 6 rows for 5-day returns)."
                 )
+
+        # Final validation: ensure target column has no NaN values
+        if df[target_column].isnull().any():
+            print(f"Warning: Target column '{target_column}' has {df[target_column].isnull().sum()} NaN values")
+            df = df.dropna(subset=[target_column])
+            print(f"Dropped rows with NaN target values. New shape: {df.shape}")
 
         print(f"Final data shape: {df.shape}")
 
