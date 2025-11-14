@@ -13,3 +13,4 @@ tweepy
 beautifulsoup4
 plotly
 boto3
+scipy

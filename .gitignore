@@ -146,11 +146,12 @@ secrets.json
 logs/
 *.log
 
-# Model files
-models/
+# Trained model files (saved models, not source code)
+saved_models/
 *.joblib
 *.pkl
 *.h5
+# Note: src/models/ directory contains source code and should be tracked
 
 # Temporary files
 temp/
