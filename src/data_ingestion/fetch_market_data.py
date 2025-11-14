@@ -135,20 +135,41 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def fetch_stock_data(symbol: str, days_back: int = 365) -> pd.DataFrame:
+    """
+    Fetch stock data for the last N days (convenience function).
+
+    Args:
+        symbol: Stock symbol (e.g., 'AAPL', 'MSFT')
+        days_back: Number of days of historical data to fetch
+
+    Returns:
+        DataFrame with OHLCV data and technical indicators
+    """
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days_back)
+
+    return download_stock_data(
+        symbol,
+        start_date.strftime('%Y-%m-%d'),
+        end_date.strftime('%Y-%m-%d')
+    )
+
+
 def get_stock_info(symbol: str) -> Dict[str, Any]:
     """
     Get basic information about a stock.
-    
+
     Args:
         symbol: Stock symbol
-    
+
     Returns:
         Dictionary with stock information
     """
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info
-        
+
         return {
             'symbol': symbol,
             'name': info.get('longName', ''),
