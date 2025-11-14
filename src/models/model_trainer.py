@@ -49,27 +49,78 @@ class ModelTrainer:
         Returns:
             X_train, X_test, y_train, y_test, feature_names
         """
-        # Remove NaN values
-        df = df.dropna()
-
-        # Auto-detect feature columns if not provided
-        if feature_columns is None:
-            exclude_cols = [target_column, 'Date', 'Symbol', 'Close', 'Open', 'High', 'Low', 'Volume']
-            feature_columns = [col for col in df.columns if col not in exclude_cols]
+        # Make a copy to avoid modifying original
+        df = df.copy()
 
         # Ensure target exists
         if target_column not in df.columns:
             # Create target if it doesn't exist (5-day forward return)
-            df[target_column] = df['Close'].pct_change(5).shift(-5) * 100
-            df = df.dropna()
+            if 'Close' not in df.columns:
+                raise ValueError("DataFrame must contain 'Close' column to create target")
+            # Calculate forward return: (price_in_5_days - price_today) / price_today * 100
+            df[target_column] = (df['Close'].shift(-5) / df['Close'] - 1) * 100
+        else:
+            # If target exists but is in decimal form (e.g., 0.05 instead of 5.0), convert to percentage
+            if df[target_column].abs().max() < 1.0:  # Likely in decimal form
+                df[target_column] = df[target_column] * 100
 
-        X = df[feature_columns].values
-        y = df[target_column].values
+        # Auto-detect feature columns if not provided
+        if feature_columns is None:
+            exclude_cols = ['Date', 'Symbol', 'Close', 'Open', 'High', 'Low', 'Volume']
+            # Exclude all target columns (return_Xd, return_Xd_abs, target_Xd, etc.)
+            exclude_patterns = ['return_', 'target_']
+            feature_columns = [
+                col for col in df.columns
+                if col not in exclude_cols
+                and col != target_column
+                and not any(pattern in col for pattern in exclude_patterns)
+            ]
+
+        # Validate we have feature columns
+        if len(feature_columns) == 0:
+            raise ValueError("No feature columns found in DataFrame")
+
+        # Select only the columns we need and drop rows with NaN in those columns
+        columns_needed = feature_columns + [target_column]
+
+        print(f"Data preparation: {len(df)} total rows, using {len(feature_columns)} features")
+
+        df_clean = df[columns_needed].dropna()
+
+        print(f"After removing NaN: {len(df_clean)} rows remaining")
+
+        # Validate we have enough data
+        if len(df_clean) < 50:
+            raise ValueError(
+                f"Insufficient data after cleaning: only {len(df_clean)} rows remaining out of {len(df)} original rows. "
+                f"Need at least 50 rows. This may be due to:\n"
+                f"1. Not enough historical data (try increasing days_back)\n"
+                f"2. Too many NaN values from technical indicators\n"
+                f"3. Forward-looking target variable reducing usable data"
+            )
+
+        X = df_clean[feature_columns].values
+        y = df_clean[target_column].values
+
+        # Validate data shape
+        if X.shape[0] == 0:
+            raise ValueError("No valid samples found after data preparation")
 
         # Split data using time-series aware split
         split_idx = int(len(X) * (1 - self.test_size))
+
+        # Ensure we have at least some data in both splits
+        if split_idx < 10:
+            raise ValueError(f"Not enough data for training: only {split_idx} training samples")
+
         X_train, X_test = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
+
+        # Validate splits
+        if len(X_train) == 0:
+            raise ValueError("No training samples after split")
+        if len(X_test) == 0:
+            raise ValueError("No test samples after split")
 
         # Scale features
         X_train = self.scaler.fit_transform(X_train)

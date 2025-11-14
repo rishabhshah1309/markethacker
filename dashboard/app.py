@@ -113,8 +113,16 @@ def load_and_prepare_data(symbol, days_back=365):
 def train_models_cached(df_features):
     """Train all models (cached)."""
     with st.spinner('Training ML models... This may take a minute.'):
-        models_dict = train_all_models(df_features, target_column='return_5d')
-        return models_dict
+        try:
+            models_dict = train_all_models(df_features, target_column='return_5d')
+            return models_dict
+        except ValueError as e:
+            st.error(f"Error training models: {str(e)}")
+            st.info("Try fetching more historical data (increase days_back parameter)")
+            return None
+        except Exception as e:
+            st.error(f"Unexpected error during model training: {str(e)}")
+            return None
 
 
 def create_price_chart(df, symbol):
@@ -338,6 +346,11 @@ def main():
         # Train models
         st.subheader('🤖 Training ML Models')
         models_dict = train_models_cached(df_features)
+
+        # Check if model training was successful
+        if models_dict is None:
+            st.error("Model training failed. Please try again with different parameters.")
+            return
 
         # Get model comparison
         model_comparison = compare_model_performance(models_dict)
