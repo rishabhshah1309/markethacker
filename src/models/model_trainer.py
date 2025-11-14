@@ -49,8 +49,24 @@ class ModelTrainer:
         Returns:
             X_train, X_test, y_train, y_test, feature_names
         """
+        # Validate input data
+        if df is None or df.empty:
+            raise ValueError("Input DataFrame is empty or None. Cannot train models without data.")
+
+        print(f"Initial data shape: {df.shape}")
+
         # Remove NaN values
         df = df.dropna()
+
+        # Validate after removing NaN values
+        if df.empty:
+            raise ValueError(
+                "DataFrame is empty after removing NaN values. "
+                "This likely means all rows contain at least one NaN value. "
+                "Check your data source or feature engineering pipeline."
+            )
+
+        print(f"Data shape after dropna: {df.shape}")
 
         # Auto-detect feature columns if not provided
         if feature_columns is None:
@@ -60,16 +76,60 @@ class ModelTrainer:
         # Ensure target exists
         if target_column not in df.columns:
             # Create target if it doesn't exist (5-day forward return)
+            if 'Close' not in df.columns:
+                raise ValueError("Cannot create target column: 'Close' column not found in DataFrame")
             df[target_column] = df['Close'].pct_change(5).shift(-5) * 100
             df = df.dropna()
+
+            # Validate again after creating target
+            if df.empty:
+                raise ValueError(
+                    f"DataFrame is empty after creating target column '{target_column}'. "
+                    "This can happen if the dataset is too small (needs at least 6 rows for 5-day returns)."
+                )
+
+        print(f"Final data shape: {df.shape}")
 
         X = df[feature_columns].values
         y = df[target_column].values
 
+        # Validate we have enough data for splitting
+        min_samples = max(10, int(1 / self.test_size) + 1)  # At least 10 samples or enough for split
+        if len(X) < min_samples:
+            raise ValueError(
+                f"Insufficient data for model training. Found {len(X)} samples, "
+                f"but need at least {min_samples} samples (with test_size={self.test_size}). "
+                "Try collecting more data or reducing the test_size parameter."
+            )
+
         # Split data using time-series aware split
         split_idx = int(len(X) * (1 - self.test_size))
+
+        # Ensure both train and test sets have at least 1 sample
+        if split_idx < 1:
+            split_idx = 1
+        if split_idx >= len(X):
+            split_idx = len(X) - 1
+
         X_train, X_test = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
+
+        # Final validation before scaling
+        if len(X_train) == 0:
+            raise ValueError(
+                f"Training set is empty after split. "
+                f"Total samples: {len(X)}, split_idx: {split_idx}, test_size: {self.test_size}. "
+                "Try adjusting the test_size parameter or collecting more data."
+            )
+
+        if len(X_test) == 0:
+            raise ValueError(
+                f"Test set is empty after split. "
+                f"Total samples: {len(X)}, split_idx: {split_idx}, test_size: {self.test_size}. "
+                "Try adjusting the test_size parameter or collecting more data."
+            )
+
+        print(f"Train/Test split: {len(X_train)}/{len(X_test)} samples")
 
         # Scale features
         X_train = self.scaler.fit_transform(X_train)
